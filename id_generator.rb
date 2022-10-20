@@ -3,17 +3,17 @@
 class IdGenerator
   def initialize
     @id = 0
-    @handlers = {}
+    @callbacks = {}
   end
 
-  def new_id(handler)
-    @handlers[@id] = handler
+  def get_id_for(callback)
+    @callbacks[@id] = callback
     old = @id
     @id += 1
     old
   end
 
   def process(id, resp)
-    @handlers[id]&.call(id, resp)
+    @callbacks[id]&.call(id, resp)
   end
 end
