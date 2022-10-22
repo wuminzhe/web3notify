@@ -13,7 +13,7 @@ require_relative 'alert_config'
 require_relative 'id_generator'
 require_relative 'event_handler'
 
-URL = 'wss://rpc.darwinia.network'
+URL = 'wss://crab-rpc.darwinia.network'
 
 alert_config = alert_config()
 
@@ -108,8 +108,8 @@ end
 # resp callback
 #################################################################
 resp_callback = lambda do |conn, resp|
-  p 'resp: -------------------------------------'
-  p resp
+  # p 'resp: -------------------------------------'
+  # p resp
 
   # handle id
   idg.process(resp['id'], resp) if resp['id']

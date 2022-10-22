@@ -107,15 +107,15 @@ end
 
 #################################################################
 
-subscription_handlers = {}
+subscription_callbacks = {}
 
-subscription_handler_for_events = lambda do |_ws, changes|
+subscribe_callback_for_events = lambda do |_ws, changes|
   p 'handle events......'
   events = decode_events(changes, metadata, registry)
   handle_events(events, alert_config[:events])
 end
 
-id_handler_for_get_metadata = lambda do |id, resp|
+get_metadata_callback = lambda do |id, resp|
   return unless resp['id'] && resp['result']
   return if resp['id'] != id
 
@@ -127,11 +127,11 @@ id_handler_for_get_metadata = lambda do |id, resp|
   registry = Metadata.build_registry(metadata)
 end
 
-subscription_handler_for_last_runtime_upgrade = lambda do |ws, _changes|
+subscribe_callback_for_last_runtime_upgrade = lambda do |ws, _changes|
   p 'runtime upgraded......'
   get_metadata(
     ws,
-    idg.new_id(id_handler_for_get_metadata)
+    idg.get_id_for(get_metadata_callback)
   )
 end
 
@@ -153,13 +153,13 @@ end
 #   subscription_handlers[subscription] = subscription_handler_for_last_runtime_upgrade
 # end
 
-id_handler_for_subscription = lambda do |name|
+id_callback_for_subscribe = lambda do |name|
   lambda do |id, resp|
     return unless resp['id'] && resp['result']
     return if resp['id'] != id
 
     subscription = resp['result']
-    subscription_handlers[subscription] = "subscription_handler_for_#{name}"
+    subscription_callbacks[subscription] = "subscription_handler_for_#{name}"
   end
 end
 
@@ -173,17 +173,17 @@ EM.run do
 
     get_metadata(
       ws,
-      idg.new_id(id_handler_for_get_metadata)
+      idg.get_id_for(get_metadata_callback)
     )
 
     subscribe_events(
       ws,
-      idg.new_id(sbs.new_id_handler('events'))
+      idg.get_id_for(sbs.new_id_handler('events'))
     )
 
     subscribe_last_runtime_upgrade(
       ws,
-      idg.new_id(id_handler_for_subscription.call('last_runtime_upgrade'))
+      idg.get_id_for(id_callback_for_subscribe.call('last_runtime_upgrade'))
     )
   end
 
@@ -204,8 +204,8 @@ EM.run do
 
       # system events
       subscription = resp['params']['subscription']
-      handler = subscription_handlers[subscription]
-      eval(handler).call(ws, changes) if handler
+      callbackk = subscription_callbacks[subscription]
+      eval(callback).call(ws, changes) if callback
     end
   end
 
