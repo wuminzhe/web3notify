@@ -10,7 +10,7 @@ require 'async/http/endpoint'
 require 'async/websocket/client'
 
 require_relative 'alert_config'
-require_relative 'id_generator'
+require_relative 'client'
 require_relative 'event_handler'
 
 URL = 'wss://crab-rpc.darwinia.network'
@@ -20,28 +20,7 @@ alert_config = alert_config()
 # GLOBOL VARS
 metadata = nil
 registry = nil
-idg = IdGenerator.new
-subscription_callbacks = {}
-
-# send
-#################################################################
-def send_get_metadata(ws_client, id)
-  body = Substrate::RpcHelper.state_getMetadata(id)
-  p body
-  ws_client.write(body)
-end
-
-def send_subscribe_events(ws_client, id)
-  body = Substrate::RPC.state_subscribeStorage(id, 'System', 'Events')
-  p body
-  ws_client.write(body)
-end
-
-def send_subscribe_last_runtime_upgrade(ws_client, id)
-  body = Substrate::RPC.state_subscribeStorage(id, 'System', 'LastRuntimeUpgrade')
-  p body
-  ws_client.write(body)
-end
+client = nil
 
 # decode
 #################################################################
@@ -62,9 +41,9 @@ def decode_storages(datas, storage_item, registry)
   end
 end
 
-# id callbacks
+# callbacks
 #################################################################
-id_callback_for_get_metadata = lambda do |id, resp|
+callback_for_get_metadata = lambda do |id, resp|
   return unless resp['id'] && resp['result']
   return if resp['id'] != id
 
@@ -76,75 +55,39 @@ id_callback_for_get_metadata = lambda do |id, resp|
   registry = Metadata.build_registry(metadata)
 end
 
-id_callback_for_subscribe = lambda do |name|
-  lambda do |id, resp|
-    return unless resp['id'] && resp['result']
-    return if resp['id'] != id
-
-    subscription = resp['result']
-    subscription_callbacks[subscription] = "subscription_callback_for_#{name}"
-  end
-end
-
-# subscription callbacks
-#################################################################
-subscription_callback_for_events = lambda do |_ws, changes|
+callback_for_events = lambda do |changes|
   return if metadata.nil?
 
   p 'handle events......'
   events = decode_events(changes, metadata, registry)
-  p events
   handle_events(events, alert_config[:events])
 end
 
-subscription_callback_for_last_runtime_upgrade = lambda do |conn, _changes|
+callback_for_last_runtime_upgrade = lambda do |_changes|
   return if metadata.nil?
 
   p 'runtime upgraded......'
-  id = idg.get_id_for(id_callback_for_get_metadata)
-  send_get_metadata(conn, id)
+  client.get_metadata(callback_for_get_metadata)
 end
 
-# resp callback
+# main
 #################################################################
-resp_callback = lambda do |conn, resp|
-  # p 'resp: -------------------------------------'
-  # p resp
-
-  # handle id
-  idg.process(resp['id'], resp) if resp['id']
-
-  # handle subscription
-  if resp['params'] && resp['params']['subscription']
-    changes = resp['params']['result']['changes']
-    block = resp['params']['result']['block']
-    p "block: #{block}"
-
-    subscription = resp['params']['subscription']
-    callback = subscription_callbacks[subscription]
-    eval(callback).call(conn, changes) if callback
-  end
-end
-
 Async do |_task|
   endpoint = Async::HTTP::Endpoint.parse(URL, alpn_protocols: Async::HTTP::Protocol::HTTP11.names)
   loop do
     Async::WebSocket::Client.connect(endpoint) do |conn|
-      id = idg.get_id_for(id_callback_for_get_metadata)
-      send_get_metadata(conn, id)
+      client = Client.new(conn)
 
-      id = idg.get_id_for(id_callback_for_subscribe.call('events'))
-      send_subscribe_events(conn, id)
-
-      id = idg.get_id_for(id_callback_for_subscribe.call('last_runtime_upgrade'))
-      send_subscribe_last_runtime_upgrade(conn, id)
+      client.get_metadata(callback_for_get_metadata)
+      client.subscribe_storage('System', 'Events', callback_for_events)
+      client.subscribe_storage('System', 'LastRuntimeUpgrade', callback_for_last_runtime_upgrade)
 
       loop do
         message = conn.read
         next unless message
 
         resp = JSON.parse(message)
-        resp_callback.call(conn, resp)
+        client.process(resp)
       end
     end
   rescue StandardError => e

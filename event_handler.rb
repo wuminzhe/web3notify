@@ -44,7 +44,8 @@ def handle_event(event, _config)
 
   return if pallet_name.to_s == 'System'
 
-  slack_to(event[:event].to_json)
+  p event
+  # slack_to(event[:event].to_json)
 
   # alerts = config[pallet_name] && config[pallet_name][event_name]
   # return unless alerts
