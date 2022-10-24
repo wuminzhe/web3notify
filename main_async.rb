@@ -10,7 +10,7 @@ require 'async/http/endpoint'
 require 'async/websocket/client'
 
 require_relative 'alert_config'
-require_relative 'client'
+require_relative 'async_io_client'
 require_relative 'event_handler'
 
 URL = 'wss://pangolin-rpc.darwinia.network'
@@ -38,7 +38,7 @@ Async do |_task|
   endpoint = Async::HTTP::Endpoint.parse(URL, alpn_protocols: Async::HTTP::Protocol::HTTP11.names)
   loop do
     Async::WebSocket::Client.connect(endpoint) do |conn|
-      client = Client.new(conn)
+      client = AsyncIoClient.new(conn)
 
       client.get_metadata
       client.subscribe_storage('System', 'Events', callback_for_events)
