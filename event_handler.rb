@@ -42,10 +42,9 @@ def handle_event(event, _config)
       event[:event][pallet_name]
     end
 
-  return if pallet_name.to_s == 'System'
+  return unless event_name.to_s == 'MessagesDelivered'
 
-  p event
-  # slack_to(event[:event].to_json)
+  slack_to(event[:event].to_json)
 
   # alerts = config[pallet_name] && config[pallet_name][event_name]
   # return unless alerts
@@ -61,6 +60,7 @@ def handle_event(event, _config)
 end
 
 def handle_events(events, config)
+  p events
   events.each do |event|
     handle_event(event, config)
   end

@@ -13,61 +13,23 @@ require_relative 'alert_config'
 require_relative 'client'
 require_relative 'event_handler'
 
-URL = 'wss://crab-rpc.darwinia.network'
+URL = 'wss://pangolin-rpc.darwinia.network'
 
 alert_config = alert_config()
 
-# GLOBOL VARS
-metadata = nil
-registry = nil
 client = nil
-
-# decode
-#################################################################
-def decode_events(changes, metadata, registry)
-  storage_item = Metadata.get_storage_item('System', 'Events', metadata)
-  datas = changes.map { |change| change[1] }
-  decode_storages(datas, storage_item, registry).reduce([]) { |sum, item| sum + item }
-end
-
-def decode_last_runtime_upgrade(changes, metadata, registry)
-  storage_item = Metadata.get_storage_item('System', 'LastRuntimeUpgrade', metadata)
-  decode_storages(changes.map(&:second), storage_item, registry)
-end
-
-def decode_storages(datas, storage_item, registry)
-  datas.map do |data|
-    StorageHelper.decode_storage2(data, storage_item, registry)
-  end
-end
 
 # callbacks
 #################################################################
-callback_for_get_metadata = lambda do |id, resp|
-  return unless resp['id'] && resp['result']
-  return if resp['id'] != id
-
-  metadata_hex = resp['result']
-  new_metadata = Metadata.decode_metadata(metadata_hex.strip.to_bytes)
-  return unless new_metadata
-
-  metadata = new_metadata
-  registry = Metadata.build_registry(metadata)
-end
-
-callback_for_events = lambda do |changes|
-  return if metadata.nil?
-
+callback_for_events = lambda do |storage_changes|
   p 'handle events......'
-  events = decode_events(changes, metadata, registry)
+  events = storage_changes.reduce([]) { |sum, item| sum + item }
   handle_events(events, alert_config[:events])
 end
 
-callback_for_last_runtime_upgrade = lambda do |_changes|
-  return if metadata.nil?
-
+callback_for_last_runtime_upgrade = lambda do |_storage_changes|
   p 'runtime upgraded......'
-  client.get_metadata(callback_for_get_metadata)
+  client.get_metadata
 end
 
 # main
@@ -78,7 +40,7 @@ Async do |_task|
     Async::WebSocket::Client.connect(endpoint) do |conn|
       client = Client.new(conn)
 
-      client.get_metadata(callback_for_get_metadata)
+      client.get_metadata
       client.subscribe_storage('System', 'Events', callback_for_events)
       client.subscribe_storage('System', 'LastRuntimeUpgrade', callback_for_last_runtime_upgrade)
 
